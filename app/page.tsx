@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -18,6 +18,12 @@ type LessonRecord = {
   created_at: string
 }
 
+type StudentSummary = {
+  student_name: string
+  count: number
+  latestDate: string
+}
+
 export default function Home() {
   const [studentName, setStudentName] = useState('')
   const [lessonTopic, setLessonTopic] = useState('')
@@ -28,22 +34,15 @@ export default function Home() {
   )
 
   const [records, setRecords] = useState<LessonRecord[]>([])
-  const [studentList, setStudentList] = useState<string[]>([])
-  const [selectedStudent, setSelectedStudent] = useState('전체')
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
 
-  async function fetchRecords(student?: string) {
-    let query = supabase
+  async function fetchRecords() {
+    const { data, error } = await supabase
       .from('lesson_records')
       .select('*')
+      .order('created_at', { ascending: false })
       .order('id', { ascending: false })
-
-    if (student && student !== '전체') {
-      query = query.eq('student_name', student)
-    }
-
-    const { data, error } = await query
 
     if (error) {
       console.error('조회 오류:', error)
@@ -51,24 +50,6 @@ export default function Home() {
     }
 
     setRecords(data ?? [])
-  }
-
-  async function fetchStudentList() {
-    const { data, error } = await supabase
-      .from('lesson_records')
-      .select('student_name')
-      .order('student_name', { ascending: true })
-
-    if (error) {
-      console.error('학생 목록 조회 오류:', error)
-      return
-    }
-
-    const uniqueNames = Array.from(
-      new Set((data ?? []).map((item) => item.student_name))
-    )
-
-    setStudentList(uniqueNames)
   }
 
   function resetForm() {
@@ -107,8 +88,7 @@ export default function Home() {
     }
 
     resetForm()
-    await fetchStudentList()
-    await fetchRecords(selectedStudent)
+    await fetchRecords()
   }
 
   async function updateRecord() {
@@ -141,8 +121,7 @@ export default function Home() {
     }
 
     resetForm()
-    await fetchStudentList()
-    await fetchRecords(selectedStudent)
+    await fetchRecords()
   }
 
   function startEdit(record: LessonRecord) {
@@ -175,21 +154,46 @@ export default function Home() {
       resetForm()
     }
 
-    await fetchStudentList()
-    await fetchRecords(selectedStudent)
+    await fetchRecords()
   }
 
   useEffect(() => {
-    fetchStudentList()
     fetchRecords()
   }, [])
 
-  useEffect(() => {
-    fetchRecords(selectedStudent)
-  }, [selectedStudent])
+  const studentSummaries = useMemo(() => {
+    const map = new Map<string, StudentSummary>()
+
+    for (const record of records) {
+      const existing = map.get(record.student_name)
+
+      if (!existing) {
+        map.set(record.student_name, {
+          student_name: record.student_name,
+          count: 1,
+          latestDate: record.created_at,
+        })
+      } else {
+        map.set(record.student_name, {
+          student_name: record.student_name,
+          count: existing.count + 1,
+          latestDate:
+            record.created_at > existing.latestDate
+              ? record.created_at
+              : existing.latestDate,
+        })
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.student_name.localeCompare(b.student_name, 'ko')
+    )
+  }, [records])
+
+  const recentRecords = records.slice(0, 5)
 
   return (
-    <main style={{ maxWidth: '800px', margin: '40px auto', padding: '20px' }}>
+    <main style={{ maxWidth: '900px', margin: '40px auto', padding: '20px' }}>
       <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '24px' }}>
         학생별 수업 기록 앱
       </h1>
@@ -289,99 +293,127 @@ export default function Home() {
         </div>
       </div>
 
-      <div
-        style={{
-          marginBottom: '24px',
-          padding: '16px',
-          border: '1px solid #ddd',
-          borderRadius: '12px',
-        }}
-      >
-        <label
-          htmlFor="student-filter"
-          style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}
-        >
-          학생 필터
-        </label>
-        <select
-          id="student-filter"
-          value={selectedStudent}
-          onChange={(e) => setSelectedStudent(e.target.value)}
-          style={{ padding: '12px', fontSize: '16px', width: '100%' }}
-        >
-          <option value="전체">전체</option>
-          {studentList.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <section style={{ marginBottom: '36px' }}>
+        <h2 style={{ fontSize: '24px', marginBottom: '16px' }}>학생 목록</h2>
 
-      <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '16px' }}>
-        저장된 기록
-      </h2>
-
-      <div style={{ display: 'grid', gap: '16px' }}>
-        {records.length === 0 ? (
-          <p>표시할 기록이 없습니다.</p>
+        {studentSummaries.length === 0 ? (
+          <p>아직 등록된 학생이 없습니다.</p>
         ) : (
-          records.map((record) => (
-            <div
-              key={record.id}
-              style={{
-                border: '1px solid #ddd',
-                borderRadius: '12px',
-                padding: '16px',
-              }}
-            >
-              <p>
-                <strong>학생 이름:</strong>{' '}
-                <Link
-                 href={`/students/${encodeURIComponent(record.student_name)}`}
-                 style={{ color: '#2563eb', textDecoration: 'none' }}
-                >
-                 {record.student_name}
-                </Link>
-              </p>
-              <p><strong>수업 주제:</strong> {record.lesson_topic}</p>
-              <p><strong>숙제:</strong> {record.homework || '-'}</p>
-              <p><strong>다음 시간 체크포인트:</strong> {record.next_checkpoint || '-'}</p>
-              <p><strong>작성일:</strong> {record.created_at}</p>
+          <div
+            style={{
+              display: 'grid',
+              gap: '16px',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            }}
+          >
+            {studentSummaries.map((student) => (
+              <div
+                key={student.student_name}
+                style={{
+                  border: '1px solid #ddd',
+                  borderRadius: '12px',
+                  padding: '16px',
+                }}
+              >
+                <h3 style={{ marginTop: 0, marginBottom: '12px' }}>
+                  <Link
+                    href={`/students/${encodeURIComponent(student.student_name)}`}
+                    style={{ color: '#2563eb', textDecoration: 'none' }}
+                  >
+                    {student.student_name}
+                  </Link>
+                </h3>
 
-              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                <button
-                  onClick={() => startEdit(record)}
+                <p style={{ margin: '6px 0' }}>
+                  <strong>기록 수:</strong> {student.count}
+                </p>
+                <p style={{ margin: '6px 0 14px' }}>
+                  <strong>최근 작성일:</strong> {student.latestDate}
+                </p>
+
+                <Link
+                  href={`/students/${encodeURIComponent(student.student_name)}`}
                   style={{
+                    display: 'inline-block',
                     padding: '8px 12px',
                     backgroundColor: '#2563eb',
                     color: 'white',
-                    border: 'none',
                     borderRadius: '8px',
-                    cursor: 'pointer',
+                    textDecoration: 'none',
                   }}
                 >
-                  수정
-                </button>
-
-                <button
-                  onClick={() => deleteRecord(record.id)}
-                  style={{
-                    padding: '8px 12px',
-                    backgroundColor: 'crimson',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  삭제
-                </button>
+                  상세 페이지 보기
+                </Link>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
-      </div>
+      </section>
+
+      <section>
+        <h2 style={{ fontSize: '24px', marginBottom: '16px' }}>최근 기록</h2>
+
+        {recentRecords.length === 0 ? (
+          <p>최근 기록이 없습니다.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: '16px' }}>
+            {recentRecords.map((record) => (
+              <div
+                key={record.id}
+                style={{
+                  border: '1px solid #ddd',
+                  borderRadius: '12px',
+                  padding: '16px',
+                }}
+              >
+                <p>
+                  <strong>학생 이름:</strong>{' '}
+                  <Link
+                    href={`/students/${encodeURIComponent(record.student_name)}`}
+                    style={{ color: '#2563eb', textDecoration: 'none' }}
+                  >
+                    {record.student_name}
+                  </Link>
+                </p>
+                <p><strong>수업 주제:</strong> {record.lesson_topic}</p>
+                <p><strong>숙제:</strong> {record.homework || '-'}</p>
+                <p><strong>다음 시간 체크포인트:</strong> {record.next_checkpoint || '-'}</p>
+                <p><strong>작성일:</strong> {record.created_at}</p>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                  <button
+                    onClick={() => startEdit(record)}
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#2563eb',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    수정
+                  </button>
+
+                  <button
+                    onClick={() => deleteRecord(record.id)}
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: 'crimson',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   )
 }
