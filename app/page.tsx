@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -334,7 +335,15 @@ export default function Home() {
                 padding: '16px',
               }}
             >
-              <p><strong>학생 이름:</strong> {record.student_name}</p>
+              <p>
+                <strong>학생 이름:</strong>{' '}
+                <Link
+                 href={`/students/${encodeURIComponent(record.student_name)}`}
+                 style={{ color: '#2563eb', textDecoration: 'none' }}
+                >
+                 {record.student_name}
+                </Link>
+              </p>
               <p><strong>수업 주제:</strong> {record.lesson_topic}</p>
               <p><strong>숙제:</strong> {record.homework || '-'}</p>
               <p><strong>다음 시간 체크포인트:</strong> {record.next_checkpoint || '-'}</p>
