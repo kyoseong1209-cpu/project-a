@@ -30,6 +30,7 @@ export default function Home() {
   const [studentList, setStudentList] = useState<string[]>([])
   const [selectedStudent, setSelectedStudent] = useState('전체')
   const [loading, setLoading] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   async function fetchRecords(student?: string) {
     let query = supabase
@@ -69,6 +70,15 @@ export default function Home() {
     setStudentList(uniqueNames)
   }
 
+  function resetForm() {
+    setStudentName('')
+    setLessonTopic('')
+    setHomework('')
+    setNextCheckpoint('')
+    setCreatedAt(new Date().toISOString().slice(0, 10))
+    setEditingId(null)
+  }
+
   async function addRecord() {
     if (!studentName.trim() || !lessonTopic.trim()) {
       alert('학생 이름과 수업 주제는 꼭 입력해야 해.')
@@ -95,14 +105,57 @@ export default function Home() {
       return
     }
 
-    setStudentName('')
-    setLessonTopic('')
-    setHomework('')
-    setNextCheckpoint('')
-    setCreatedAt(new Date().toISOString().slice(0, 10))
-
+    resetForm()
     await fetchStudentList()
     await fetchRecords(selectedStudent)
+  }
+
+  async function updateRecord() {
+    if (editingId === null) return
+
+    if (!studentName.trim() || !lessonTopic.trim()) {
+      alert('학생 이름과 수업 주제는 꼭 입력해야 해.')
+      return
+    }
+
+    setLoading(true)
+
+    const { error } = await supabase
+      .from('lesson_records')
+      .update({
+        student_name: studentName,
+        lesson_topic: lessonTopic,
+        homework,
+        next_checkpoint: nextCheckpoint,
+        created_at: createdAt,
+      })
+      .eq('id', editingId)
+
+    setLoading(false)
+
+    if (error) {
+      console.error('수정 오류:', error)
+      alert('수정 실패')
+      return
+    }
+
+    resetForm()
+    await fetchStudentList()
+    await fetchRecords(selectedStudent)
+  }
+
+  function startEdit(record: LessonRecord) {
+    setEditingId(record.id)
+    setStudentName(record.student_name)
+    setLessonTopic(record.lesson_topic)
+    setHomework(record.homework ?? '')
+    setNextCheckpoint(record.next_checkpoint ?? '')
+    setCreatedAt(record.created_at)
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
   }
 
   async function deleteRecord(id: number) {
@@ -115,6 +168,10 @@ export default function Home() {
       console.error('삭제 오류:', error)
       alert('삭제 실패')
       return
+    }
+
+    if (editingId === id) {
+      resetForm()
     }
 
     await fetchStudentList()
@@ -146,6 +203,10 @@ export default function Home() {
           marginBottom: '32px',
         }}
       >
+        <h2 style={{ margin: 0 }}>
+          {editingId === null ? '새 기록 작성' : '기록 수정 중'}
+        </h2>
+
         <input
           value={studentName}
           onChange={(e) => setStudentName(e.target.value)}
@@ -183,21 +244,48 @@ export default function Home() {
           style={{ padding: '12px', fontSize: '16px' }}
         />
 
-        <button
-          onClick={addRecord}
-          disabled={loading}
-          style={{
-            padding: '12px',
-            fontSize: '16px',
-            backgroundColor: 'black',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-          }}
-        >
-          {loading ? '저장 중...' : '기록 저장'}
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={editingId === null ? addRecord : updateRecord}
+            disabled={loading}
+            style={{
+              padding: '12px',
+              fontSize: '16px',
+              backgroundColor: 'black',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              flex: 1,
+            }}
+          >
+            {loading
+              ? editingId === null
+                ? '저장 중...'
+                : '수정 중...'
+              : editingId === null
+                ? '기록 저장'
+                : '수정 완료'}
+          </button>
+
+          {editingId !== null && (
+            <button
+              onClick={resetForm}
+              type="button"
+              style={{
+                padding: '12px',
+                fontSize: '16px',
+                backgroundColor: '#666',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              취소
+            </button>
+          )}
+        </div>
       </div>
 
       <div
@@ -252,20 +340,35 @@ export default function Home() {
               <p><strong>다음 시간 체크포인트:</strong> {record.next_checkpoint || '-'}</p>
               <p><strong>작성일:</strong> {record.created_at}</p>
 
-              <button
-                onClick={() => deleteRecord(record.id)}
-                style={{
-                  marginTop: '12px',
-                  padding: '8px 12px',
-                  backgroundColor: 'crimson',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                }}
-              >
-                삭제
-              </button>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button
+                  onClick={() => startEdit(record)}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#2563eb',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  수정
+                </button>
+
+                <button
+                  onClick={() => deleteRecord(record.id)}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: 'crimson',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  삭제
+                </button>
+              </div>
             </div>
           ))
         )}
