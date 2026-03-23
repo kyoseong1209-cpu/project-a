@@ -1,139 +1,208 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 
-type Post = {
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+type LessonRecord = {
   id: number
-  title: string
+  student_name: string
+  lesson_topic: string
+  homework: string | null
+  next_checkpoint: string | null
   created_at: string
 }
 
 export default function Home() {
-  const [title, setTitle] = useState('')
-  const [posts, setPosts] = useState<Post[]>([])
-  const [loading, setLoading] = useState(false)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [studentName, setStudentName] = useState('')
+  const [lessonTopic, setLessonTopic] = useState('')
+  const [homework, setHomework] = useState('')
+  const [nextCheckpoint, setNextCheckpoint] = useState('')
+  const [createdAt, setCreatedAt] = useState(
+    new Date().toISOString().slice(0, 10)
+  )
 
-  async function fetchPosts() {
+  const [records, setRecords] = useState<LessonRecord[]>([])
+  const [loading, setLoading] = useState(false)
+
+  async function fetchRecords() {
     const { data, error } = await supabase
-      .from('posts')
+      .from('lesson_records')
       .select('*')
       .order('id', { ascending: false })
 
     if (error) {
-      console.error('불러오기 오류:', error.message)
+      console.error('조회 오류:', error)
       return
     }
 
-    setPosts(data ?? [])
+    setRecords(data ?? [])
   }
 
-  useEffect(() => {
-    fetchPosts()
-  }, [])
-
-  async function handleSave() {
-    if (!title.trim()) return
+  async function addRecord() {
+    if (!studentName.trim() || !lessonTopic.trim()) {
+      alert('학생 이름과 수업 주제는 꼭 입력해야 해.')
+      return
+    }
 
     setLoading(true)
 
-    const { error } = await supabase.from('posts').insert({
-      title: title.trim(),
-    })
+    const { error } = await supabase.from('lesson_records').insert([
+      {
+        student_name: studentName,
+        lesson_topic: lessonTopic,
+        homework,
+        next_checkpoint: nextCheckpoint,
+        created_at: createdAt,
+      },
+    ])
 
     setLoading(false)
 
     if (error) {
-      console.error('저장 오류:', error.message)
+      console.error('저장 오류:', error)
       alert('저장 실패')
       return
     }
 
-    setTitle('')
-    fetchPosts()
+    setStudentName('')
+    setLessonTopic('')
+    setHomework('')
+    setNextCheckpoint('')
+    setCreatedAt(new Date().toISOString().slice(0, 10))
+
+    fetchRecords()
   }
 
-  async function handleDelete(id: number) {
-    setDeletingId(id)
-
-    const { error } = await supabase.from('posts').delete().eq('id', id)
-
-    setDeletingId(null)
+  async function deleteRecord(id: number) {
+    const { error } = await supabase
+      .from('lesson_records')
+      .delete()
+      .eq('id', id)
 
     if (error) {
-      console.error('삭제 오류:', error.message)
+      console.error('삭제 오류:', error)
       alert('삭제 실패')
       return
     }
 
-    fetchPosts()
+    fetchRecords()
   }
 
-  function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleString('ko-KR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  useEffect(() => {
+    fetchRecords()
+  }, [])
 
   return (
-    <main className="min-h-screen bg-black text-white p-10">
-      <div className="mx-auto max-w-xl">
-        <h1 className="mb-2 text-3xl font-bold">프로젝트 A</h1>
-        <p className="mb-6 text-gray-300">Supabase 연결 테스트</p>
+    <main style={{ maxWidth: '800px', margin: '40px auto', padding: '20px' }}>
+      <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '24px' }}>
+        학생별 수업 기록 앱
+      </h1>
 
-        <div className="mb-6 flex gap-3">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="제목 입력"
-            className="flex-1 rounded border border-gray-600 bg-black px-4 py-2 text-white"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleSave()
-              }
+      <div
+        style={{
+          display: 'grid',
+          gap: '12px',
+          padding: '20px',
+          border: '1px solid #ddd',
+          borderRadius: '12px',
+          marginBottom: '32px',
+        }}
+      >
+        <input
+          value={studentName}
+          onChange={(e) => setStudentName(e.target.value)}
+          placeholder="학생 이름"
+          style={{ padding: '12px', fontSize: '16px' }}
+        />
+
+        <input
+          value={lessonTopic}
+          onChange={(e) => setLessonTopic(e.target.value)}
+          placeholder="수업 주제"
+          style={{ padding: '12px', fontSize: '16px' }}
+        />
+
+        <textarea
+          value={homework}
+          onChange={(e) => setHomework(e.target.value)}
+          placeholder="숙제"
+          rows={4}
+          style={{ padding: '12px', fontSize: '16px' }}
+        />
+
+        <textarea
+          value={nextCheckpoint}
+          onChange={(e) => setNextCheckpoint(e.target.value)}
+          placeholder="다음 시간 체크포인트"
+          rows={4}
+          style={{ padding: '12px', fontSize: '16px' }}
+        />
+
+        <input
+          type="date"
+          value={createdAt}
+          onChange={(e) => setCreatedAt(e.target.value)}
+          style={{ padding: '12px', fontSize: '16px' }}
+        />
+
+        <button
+          onClick={addRecord}
+          disabled={loading}
+          style={{
+            padding: '12px',
+            fontSize: '16px',
+            backgroundColor: 'black',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+          }}
+        >
+          {loading ? '저장 중...' : '기록 저장'}
+        </button>
+      </div>
+
+      <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '16px' }}>
+        저장된 기록
+      </h2>
+
+      <div style={{ display: 'grid', gap: '16px' }}>
+        {records.map((record) => (
+          <div
+            key={record.id}
+            style={{
+              border: '1px solid #ddd',
+              borderRadius: '12px',
+              padding: '16px',
             }}
-          />
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="rounded bg-white px-4 py-2 font-semibold text-black disabled:opacity-50"
           >
-            {loading ? '저장 중...' : '저장'}
-          </button>
-        </div>
+            <p><strong>학생 이름:</strong> {record.student_name}</p>
+            <p><strong>수업 주제:</strong> {record.lesson_topic}</p>
+            <p><strong>숙제:</strong> {record.homework || '-'}</p>
+            <p><strong>다음 시간 체크포인트:</strong> {record.next_checkpoint || '-'}</p>
+            <p><strong>작성일:</strong> {record.created_at}</p>
 
-        <div className="space-y-3">
-          {posts.length === 0 ? (
-            <p className="text-gray-400">아직 저장된 데이터가 없습니다.</p>
-          ) : (
-            posts.map((post) => (
-              <div
-                key={post.id}
-                className="flex items-start justify-between rounded border border-gray-700 p-4"
-              >
-                <div>
-                  <p className="font-medium">{post.title}</p>
-                  <p className="text-sm text-gray-400">
-                    {formatDate(post.created_at)}
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => handleDelete(post.id)}
-                  disabled={deletingId === post.id}
-                  className="rounded border border-red-400 px-3 py-1 text-sm text-red-300 disabled:opacity-50"
-                >
-                  {deletingId === post.id ? '삭제 중...' : '삭제'}
-                </button>
-              </div>
-            ))
-          )}
-        </div>
+            <button
+              onClick={() => deleteRecord(record.id)}
+              style={{
+                marginTop: '12px',
+                padding: '8px 12px',
+                backgroundColor: 'crimson',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              삭제
+            </button>
+          </div>
+        ))}
       </div>
     </main>
   )
