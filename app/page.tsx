@@ -27,13 +27,21 @@ export default function Home() {
   )
 
   const [records, setRecords] = useState<LessonRecord[]>([])
+  const [studentList, setStudentList] = useState<string[]>([])
+  const [selectedStudent, setSelectedStudent] = useState('전체')
   const [loading, setLoading] = useState(false)
 
-  async function fetchRecords() {
-    const { data, error } = await supabase
+  async function fetchRecords(student?: string) {
+    let query = supabase
       .from('lesson_records')
       .select('*')
       .order('id', { ascending: false })
+
+    if (student && student !== '전체') {
+      query = query.eq('student_name', student)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('조회 오류:', error)
@@ -41,6 +49,24 @@ export default function Home() {
     }
 
     setRecords(data ?? [])
+  }
+
+  async function fetchStudentList() {
+    const { data, error } = await supabase
+      .from('lesson_records')
+      .select('student_name')
+      .order('student_name', { ascending: true })
+
+    if (error) {
+      console.error('학생 목록 조회 오류:', error)
+      return
+    }
+
+    const uniqueNames = Array.from(
+      new Set((data ?? []).map((item) => item.student_name))
+    )
+
+    setStudentList(uniqueNames)
   }
 
   async function addRecord() {
@@ -75,7 +101,8 @@ export default function Home() {
     setNextCheckpoint('')
     setCreatedAt(new Date().toISOString().slice(0, 10))
 
-    fetchRecords()
+    await fetchStudentList()
+    await fetchRecords(selectedStudent)
   }
 
   async function deleteRecord(id: number) {
@@ -90,12 +117,18 @@ export default function Home() {
       return
     }
 
-    fetchRecords()
+    await fetchStudentList()
+    await fetchRecords(selectedStudent)
   }
 
   useEffect(() => {
+    fetchStudentList()
     fetchRecords()
   }, [])
+
+  useEffect(() => {
+    fetchRecords(selectedStudent)
+  }, [selectedStudent])
 
   return (
     <main style={{ maxWidth: '800px', margin: '40px auto', padding: '20px' }}>
@@ -167,42 +200,75 @@ export default function Home() {
         </button>
       </div>
 
+      <div
+        style={{
+          marginBottom: '24px',
+          padding: '16px',
+          border: '1px solid #ddd',
+          borderRadius: '12px',
+        }}
+      >
+        <label
+          htmlFor="student-filter"
+          style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}
+        >
+          학생 필터
+        </label>
+        <select
+          id="student-filter"
+          value={selectedStudent}
+          onChange={(e) => setSelectedStudent(e.target.value)}
+          style={{ padding: '12px', fontSize: '16px', width: '100%' }}
+        >
+          <option value="전체">전체</option>
+          {studentList.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '16px' }}>
         저장된 기록
       </h2>
 
       <div style={{ display: 'grid', gap: '16px' }}>
-        {records.map((record) => (
-          <div
-            key={record.id}
-            style={{
-              border: '1px solid #ddd',
-              borderRadius: '12px',
-              padding: '16px',
-            }}
-          >
-            <p><strong>학생 이름:</strong> {record.student_name}</p>
-            <p><strong>수업 주제:</strong> {record.lesson_topic}</p>
-            <p><strong>숙제:</strong> {record.homework || '-'}</p>
-            <p><strong>다음 시간 체크포인트:</strong> {record.next_checkpoint || '-'}</p>
-            <p><strong>작성일:</strong> {record.created_at}</p>
-
-            <button
-              onClick={() => deleteRecord(record.id)}
+        {records.length === 0 ? (
+          <p>표시할 기록이 없습니다.</p>
+        ) : (
+          records.map((record) => (
+            <div
+              key={record.id}
               style={{
-                marginTop: '12px',
-                padding: '8px 12px',
-                backgroundColor: 'crimson',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
+                border: '1px solid #ddd',
+                borderRadius: '12px',
+                padding: '16px',
               }}
             >
-              삭제
-            </button>
-          </div>
-        ))}
+              <p><strong>학생 이름:</strong> {record.student_name}</p>
+              <p><strong>수업 주제:</strong> {record.lesson_topic}</p>
+              <p><strong>숙제:</strong> {record.homework || '-'}</p>
+              <p><strong>다음 시간 체크포인트:</strong> {record.next_checkpoint || '-'}</p>
+              <p><strong>작성일:</strong> {record.created_at}</p>
+
+              <button
+                onClick={() => deleteRecord(record.id)}
+                style={{
+                  marginTop: '12px',
+                  padding: '8px 12px',
+                  backgroundColor: 'crimson',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                }}
+              >
+                삭제
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </main>
   )
